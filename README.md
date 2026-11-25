@@ -28,6 +28,8 @@ NVIDIA figures are from its [published Windows recipe](https://nvidia.github.io/
 | AA-AgentPerf-local completion, full replay | 1,118.16 s | **734.51 s** |
 | SPEED-Bench coding decode, all 80 conversations | 35.37 tok/s | **70.44 tok/s** |
 
+For the newer upstream recipe, see the [MyLLMBox v5.4 Windows port investigation and DFlash2 benchmark comparison](docs/myllmbox-v5.4.md).
+
 ## Install
 
 Requirements: ARM64 Python 3.13, an NVIDIA driver compatible with CUDA 13.4, and the model checkpoint. Allow several GB for dependencies and at least 32 GB of free NVMe space for the PLE cache.
