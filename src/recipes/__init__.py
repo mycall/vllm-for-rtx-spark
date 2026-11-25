@@ -20,7 +20,8 @@ _MODELS = {}
 
 def register_builtin_models():
     """Declare bundled recipes without importing their model implementations."""
-    _MODELS.setdefault("qwen3.8-flash-next", __package__ + ".qwen3_8")
+    _MODELS.setdefault("qwen3.8-flash-next", __package__ + ".qwen3_8_flash_next")
+    _MODELS.setdefault("gemma4-12b-fp8", __package__ + ".gemma4_12b_fp8")
 
 
 def register_model(name, prepare, validate, *, matches=None, options=(),
@@ -28,6 +29,8 @@ def register_model(name, prepare, validate, *, matches=None, options=(),
     """Register another model without editing the platform or kernel runtime."""
     if not isinstance(name, str) or not name:
         raise ValueError("A model integration needs a name")
+    if name == "none":
+        raise ValueError("The recipe name 'none' is reserved for explicit opt-out")
     if name in _MODELS:
         raise ValueError("Model integration is already registered: " + name)
     if not callable(prepare) or not callable(validate) or (matches is not None and not callable(matches)):
@@ -66,6 +69,8 @@ def resolve_model_name(arguments, *, name=None):
     if name is None:
         name = adapter.integration_options(arguments).get("model")
     if name is not None:
+        if name == "none":
+            return name
         if name not in _MODELS:
             raise ValueError("Unsupported RTX Spark model recipe: " + name)
         return name
@@ -85,7 +90,7 @@ def resolve_model_name(arguments, *, name=None):
 def resolve_model(arguments, *, name=None):
     """Resolve an explicit recipe, or an unambiguous automatic match."""
     selected = resolve_model_name(arguments, name=name)
-    return _load(selected) if selected is not None else None
+    return _load(selected) if selected not in (None, "none") else None
 
 
 def register_architectures():

@@ -20,8 +20,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 runpy.run_path(str(ROOT / "scripts/load_source_package.py"))["load"]()
 
-from _rtx_spark.recipes.qwen3_8 import TargetAndDraftOverrides  # noqa: E402
-from _rtx_spark.recipes import qwen3_8  # noqa: E402
+from _rtx_spark.recipes.qwen3_8_flash_next import TargetAndDraftOverrides  # noqa: E402
+from _rtx_spark.recipes import qwen3_8_flash_next  # noqa: E402
 from _rtx_spark.kernels.csf import (  # noqa: E402
     CsfProvider,
     register_csf_provider,
@@ -94,13 +94,13 @@ print(json.dumps({"initialize_callable": callable(bootstrap.initialize),
     def test_checkout_and_installed_paths(self):
         self.assertEqual(source_root(), ROOT / "src")
         self.assertEqual(resources_root(), ROOT / "assets")
-        self.assertEqual(vendor_root(), ROOT / "third_party/python")
-        self.assertEqual(recipe_helpers(), ROOT / "src/recipes/qwen3_8/helpers")
+        self.assertEqual(vendor_root(), ROOT / ".build/vendor")
+        self.assertEqual(recipe_helpers(), ROOT / "src/recipes/qwen3_8_flash_next/helpers")
         installed = ROOT / ".build/site-packages/vllm/_rtx_spark"
         with patch.object(runtime, "source_root", return_value=installed):
             self.assertEqual(resources_root(), ROOT / ".build/site-packages/vllm/_rtx_spark/assets")
             self.assertEqual(vendor_root(), ROOT / ".build/site-packages/vllm/_rtx_spark/vendor")
-            self.assertEqual(recipe_helpers(), ROOT / ".build/site-packages/vllm/_rtx_spark/recipes/qwen3_8/helpers")
+            self.assertEqual(recipe_helpers(), ROOT / ".build/site-packages/vllm/_rtx_spark/recipes/qwen3_8_flash_next/helpers")
 
     def test_bootstrap_publishes_portable_paths_without_gpu_imports(self):
         from _rtx_spark.runtime import bootstrap
@@ -203,7 +203,7 @@ print(json.dumps({"initialize_callable": callable(bootstrap.initialize),
                                  [("cute", "auto"), ("csf", "cubin")])
                 self.assertLess(max(index for index, call in enumerate(calls) if call == "initialize"),
                                 calls.index(("cute", "auto")))
-                self.assertEqual(os.environ["MBX_DEPTH_CFG"], str(resources_root() / "recipes/qwen3_8/mtp-depth.json"))
+                self.assertEqual(os.environ["MBX_DEPTH_CFG"], str(resources_root() / "recipes/qwen3_8_flash_next/mtp-depth.json"))
                 self.assertEqual(json.loads(Path(os.environ["MBX_DEPTH_CFG"]).read_bytes())["min"], 3)
                 for key, value in {"MBX_PLE_MMAP_MODE": "nvme", "MBX_PLE_ASYNC": "1",
                                    "MBX_PLE_ASYNC_MAX": "32768", "MBX_PLE_NVME_THREADS": "4",
@@ -217,7 +217,7 @@ print(json.dumps({"initialize_callable": callable(bootstrap.initialize),
                 self.assertEqual(os.environ["MBX_DRAFT_FP8"], "1" if expected_fast else "0")
                 self.assertEqual("MBX_DRAFT_HEAD2" in os.environ, expected_fast)
                 if expected_fast:
-                    self.assertEqual(os.environ["MBX_DRAFT_HEAD2"], str(resources_root() / "recipes/qwen3_8/qwen3.8-head2.basis.pt"))
+                    self.assertEqual(os.environ["MBX_DRAFT_HEAD2"], str(resources_root() / "recipes/qwen3_8_flash_next/qwen3.8-head2.basis.pt"))
                     self.assertEqual(os.environ["MBX_DRAFT_HEAD2_K"], "2048")
                     self.assertEqual(os.environ["MBX_DRAFT_HEAD2_SCORER"], "fp8")
                 self.assertIsInstance(args.hf_overrides, TargetAndDraftOverrides)
@@ -262,21 +262,27 @@ print(json.dumps({"initialize_callable": callable(bootstrap.initialize),
         with self.assertRaisesRegex(ValueError, "exceeds"):
             configure_engine(config)
 
-    def test_draft_min_depth_changes_only_min_and_overrides_external_path(self):
-        original_path = resources_root() / "recipes/qwen3_8/mtp-depth.json"
+    def test_draft_min_depth_changes_only_min_of_external_policy(self):
+        original_path = resources_root() / "recipes/qwen3_8_flash_next/mtp-depth.json"
         original_bytes = original_path.read_bytes()
         original_policy = json.loads(original_bytes)
         with self.temporary_directory() as directory, \
                 patch.object(runtime, "cache_root", return_value=Path(directory)), \
-                patch.dict(os.environ, {"MBX_DEPTH_CFG": "external-policy.json"}, clear=True):
+                patch.dict(os.environ, {}, clear=True):
+            external = Path(directory) / "external-policy.json"
+            external_policy = dict(original_policy, window=96, promote=[80, 70], demote=[20, 10])
+            external.write_text(json.dumps(external_policy), encoding="utf-8")
+            external_bytes = external.read_bytes()
+            os.environ["MBX_DEPTH_CFG"] = str(external)
             selected = self.prepare_depth(1, {"num_speculative_tokens": 7})
-            expected = dict(original_policy, min=1)
+            expected = dict(external_policy, min=1)
             self.assertEqual(json.loads(selected.read_bytes()), expected)
             self.assertTrue(selected.is_absolute())
             self.assertEqual(selected.parent, Path(directory) / "recipe-configs")
-            self.assertEqual(selected.name, "qwen3_8-mtp-" + hashlib.sha256(selected.read_bytes()).hexdigest() + ".json")
+            self.assertEqual(selected.name, "qwen3_8_flash_next-mtp-" + hashlib.sha256(selected.read_bytes()).hexdigest() + ".json")
             self.assertEqual(original_path.read_bytes(), original_bytes)
             self.assertEqual(original_policy["min"], 3)
+            self.assertEqual(external.read_bytes(), external_bytes)
 
     def test_omitted_draft_min_depth_preserves_external_policy_without_cache_writes(self):
         from _rtx_spark.kernels import cute, csf
@@ -311,7 +317,7 @@ print(json.dumps({"initialize_callable": callable(bootstrap.initialize),
                 patch.object(runtime, "cache_root", return_value=Path(directory)), \
                 patch.dict(os.environ, {}, clear=True):
             def publish(_):
-                qwen3_8._configure_draft_min_depth({"draft_min_depth": 3})
+                qwen3_8_flash_next._configure_draft_min_depth({"draft_min_depth": 3})
                 return json.loads(Path(os.environ["MBX_DEPTH_CFG"]).read_bytes())
 
             with ThreadPoolExecutor(max_workers=8) as executor:
@@ -332,11 +338,14 @@ print(json.dumps({"initialize_callable": callable(bootstrap.initialize),
     def test_policy_write_failure_does_not_publish_or_select_partial_json(self):
         with self.temporary_directory() as directory, \
                 patch.object(runtime, "cache_root", return_value=Path(directory)), \
-                patch.dict(os.environ, {"MBX_DEPTH_CFG": "external-policy.json"}, clear=True), \
-                patch.object(qwen3_8.os, "fsync", side_effect=OSError("fixture write failure")):
+                patch.dict(os.environ, {}, clear=True), \
+                patch.object(qwen3_8_flash_next.os, "fsync", side_effect=OSError("fixture write failure")):
+            external = Path(directory) / "external-policy.json"
+            external.write_text('{"mode":"dynamic","min":3}', encoding="utf-8")
+            os.environ["MBX_DEPTH_CFG"] = str(external)
             with self.assertRaisesRegex(OSError, "fixture write failure"):
                 self.prepare_depth(3)
-            self.assertEqual(os.environ["MBX_DEPTH_CFG"], "external-policy.json")
+            self.assertEqual(os.environ["MBX_DEPTH_CFG"], str(external))
             self.assertEqual(list((Path(directory) / "recipe-configs").iterdir()), [])
 
     def test_selected_depth_policy_is_read_by_original_helper_and_inherited_by_child(self):

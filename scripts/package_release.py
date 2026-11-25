@@ -12,6 +12,14 @@ _VERSION = runpy.run_path(ROOT / "src/version.py")
 VERSION = _VERSION["PROJECT_VERSION"]
 WHEEL_VERSION = _VERSION["wheel_version"]()
 CORE_WHEEL_PREFIX = "vllm-" + WHEEL_VERSION + "-"
+BENCHMARK_SOURCE_FILES = (
+    "README.md",
+    "requirements.txt",
+    "reference/README.md",
+    "throughput/run.py",
+    "throughput/prompts.json",
+    "tests/test_throughput.py",
+)
 
 
 def archive(output, entries):
@@ -37,7 +45,7 @@ def main():
                     *map(str, core)], cwd=ROOT, check=True)
     install_entries = [(path, "wheels/" + path.name) for path in core]
     install_entries.append((_VERSION["manifest_path"](), "manifest.json"))
-    for name in ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "sources.lock.json"):
+    for name in ("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "sources.lock.json", "assets/vllm.png", "assets/monitor-screenshot.png"):
         install_entries.append((ROOT / name, name))
     build_info = output / "build-info.json"
     if build_info.is_file():
@@ -46,6 +54,11 @@ def main():
         install_entries.extend((path, path.relative_to(ROOT).as_posix())
                                for path in (ROOT / folder).rglob("*") if path.is_file())
     install_entries.append((ROOT / "scripts/install.ps1", "scripts/install.ps1"))
+    for name in BENCHMARK_SOURCE_FILES:
+        path = ROOT / "benchmarks" / name
+        if not path.is_file():
+            raise FileNotFoundError("Missing public benchmark source: " + name)
+        install_entries.append((path, "benchmarks/" + name))
     archive(install_archive, install_entries)
     print(json.dumps({"directory": str(output), "artifacts": [
         install_archive.name, core[0].name,

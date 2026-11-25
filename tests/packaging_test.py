@@ -24,12 +24,20 @@ class InstallationPackagingTests(unittest.TestCase):
             output = root / "dist"
             output.mkdir()
             files = {
-                "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "sources.lock.json",
+                "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "sources.lock.json", "assets/vllm.png", "assets/monitor-screenshot.png",
                 "configs/model/gpu.yaml", "requirements/constraints.txt", "scripts/install.ps1",
                 "patches/vllm/manifest.json",
+                "benchmarks/README.md", "benchmarks/requirements.txt", "benchmarks/reference/README.md",
+                "benchmarks/throughput/run.py",
+                "benchmarks/throughput/prompts.json", "benchmarks/tests/test_throughput.py",
                 # Developer sources and private results are not installation inputs.
                 "src/version.py", "third_party/vendor/source.cpp", "tests/private_test.py",
                 "benchmarks/results.json", "research/private.txt",
+                "benchmarks/run.py", "benchmarks/workloads.json", "benchmarks/test_run.py",
+                "benchmarks/quick.py", "benchmarks/quick_workloads.json", "benchmarks/speed_coding.py",
+                "benchmarks/speed_coding_cases.json", "benchmarks/speed_coding_full_cases.json",
+                "benchmarks/results/raw.json", "benchmarks/.cache/state.json", "benchmarks/run.log",
+                "benchmarks/reference/dataset.jsonl", "benchmarks/reference/unreviewed_client.py",
             }
             for name in files:
                 path = root / name
@@ -66,14 +74,24 @@ class InstallationPackagingTests(unittest.TestCase):
             names = [name for _, name in entries]
             self.assertEqual(set(names), {
                 "wheels/" + wheel.name, "manifest.json", "README.md", "LICENSE",
-                "THIRD_PARTY_NOTICES.md", "sources.lock.json", "build-info.json",
+                "THIRD_PARTY_NOTICES.md", "sources.lock.json", "build-info.json", "assets/vllm.png", "assets/monitor-screenshot.png",
                 "configs/model/gpu.yaml", "requirements/constraints.txt", "scripts/install.ps1",
+                "benchmarks/README.md", "benchmarks/requirements.txt", "benchmarks/reference/README.md",
+                "benchmarks/throughput/run.py",
+                "benchmarks/throughput/prompts.json", "benchmarks/tests/test_throughput.py",
             })
             self.assertEqual(len(names), len(set(names)))
             self.assertTrue(all(path.is_file() for path, _ in entries))
             self.assertEqual(json.loads(stdout.getvalue())["artifacts"], [destination.name, wheel.name])
             self.assertEqual(old_source.read_bytes(), b"preserve old release evidence")
             self.assertEqual(wheel.read_bytes(), b"wheel fixture; checked by a mocked validator")
+
+    def test_rejects_missing_benchmark_source_before_creating_archive(self):
+        with self.prepared_release() as (root, _, _, _, captures):
+            (root / "benchmarks/throughput/prompts.json").unlink()
+            with self.assertRaisesRegex(FileNotFoundError, r"Missing public benchmark source: throughput/prompts\.json"):
+                PACKAGER["main"]()
+            self.assertEqual(captures, [])
 
     def test_requires_exactly_one_matching_wheel_before_packaging(self):
         with self.prepared_release() as (_, output, wheel, checker, captures):

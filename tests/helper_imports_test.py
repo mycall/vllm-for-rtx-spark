@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 runpy.run_path(ROOT / "scripts/load_source_package.py")["load"]()
-HELPERS = ROOT / "src/recipes/qwen3_8/helpers"
-PACKAGE = "_rtx_spark.recipes.qwen3_8.helpers"
+HELPERS = ROOT / "src/recipes/qwen3_8_flash_next/helpers"
+PACKAGE = "_rtx_spark.recipes.qwen3_8_flash_next.helpers"
 
 
 class HelperImportsTests(unittest.TestCase):
@@ -104,12 +104,12 @@ class HelperImportsTests(unittest.TestCase):
                     self.assertNotIn(node.module, helpers, line)
 
     def test_flashinfer_windows_sampling_uses_the_packaged_helper(self):
-        source = ROOT / "third_party/python/flashinfer/jit/sampling.py"
+        source = ROOT / ".build/vendor/flashinfer/jit/sampling.py"
         function = next(node for node in ast.parse(source.read_text(encoding="utf-8")).body
                         if isinstance(node, ast.FunctionDef) and node.name == "gen_sampling_module")
         namespace = {"JitSpec": object}
         exec(compile(ast.Module(body=[function], type_ignores=[]), str(source), "exec"), namespace)
-        packaged = ModuleType("vllm._rtx_spark.recipes.qwen3_8.helpers.native_sampling")
+        packaged = ModuleType("vllm._rtx_spark.recipes.qwen3_8_flash_next.helpers.native_sampling")
         result = object()
         packaged.gen_native_sampling_spec = lambda: result
         flat = ModuleType("native_sampling")
